@@ -37,7 +37,5 @@ Aplikasi ini murni client-side, sehingga cukup disajikan sebagai aset statis:
 npx wrangler deploy
 ```
 
-Sudah live di: https://invoice-maker.howfidz.workers.dev
-
 > Catatan: `public/index.html` adalah salinan dari `invoice-maker.html`.
 > Jika mengubah aplikasi, salin ulang ke `public/` sebelum deploy.
