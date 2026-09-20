@@ -26,5 +26,18 @@ Data tersimpan otomatis di browser (localStorage). Gunakan **Ekspor/Impor JSON**
 
 ## Catatan
 
-- Data terikat pada browser dan lokasi file — jika file dipindah folder atau browser diganti, lakukan Ekspor → Impor
+- Data tersimpan per-browser pada domain aplikasi — gunakan Ekspor → Impor untuk memindahkan data antar perangkat
 - 100% offline: tidak ada server, tidak ada API, tidak ada tracking
+
+## Deploy (Cloudflare Workers)
+
+Aplikasi ini murni client-side, sehingga cukup disajikan sebagai aset statis:
+
+```bash
+npx wrangler deploy
+```
+
+Sudah live di: https://invoice-maker.howfidz.workers.dev
+
+> Catatan: `public/index.html` adalah salinan dari `invoice-maker.html`.
+> Jika mengubah aplikasi, salin ulang ke `public/` sebelum deploy.

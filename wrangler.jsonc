@@ -1,0 +1,11 @@
+{
+  // Konfigurasi Cloudflare Workers - Static Assets
+  // Deploy: npx wrangler deploy
+  "name": "invoice-maker",
+  "compatibility_date": "2026-06-01",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "none"
+  }
+}
