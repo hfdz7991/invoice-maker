@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Invoice Maker</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <style>
 :root{
   --bg:#f4f6f9; --panel:#ffffff; --line:#e3e7ee; --text:#1f2733; --muted:#6b7686;
@@ -213,7 +214,7 @@ body.zoom-on .zoom-float{position:fixed;bottom:22px;right:26px;z-index:70;box-sh
           <button class="btn" id="btn-duplicate">Duplikat</button>
           <button class="btn danger" id="btn-delete-inv">Hapus</button>
           <button class="btn primary" id="btn-pdf">Unduh PDF</button>
-          <button class="btn primary" id="btn-back-list">Selesai</button>
+          <button class="btn primary" id="btn-back-list">Simpan</button>
         </div>
       </div>
       <div class="mobile-tabs">
@@ -394,6 +395,7 @@ function load(){
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){ alert("Gagal menyimpan: "+e.message); } }
 let state = load();
 let currentId = null;       // id invoice yang sedang diedit
+let draftInvoice = null;    // invoice baru, belum masuk daftar sampai disimpan
 let listFilter = "semua", listSearch = "";
 
 /* ========== UTIL ========== */
@@ -471,7 +473,11 @@ function calc(inv){
   const total = Math.max(0, r2(r2(afterDisc + tax) + r2(inv.shipping||0)));
   return { subtotal, disc, tax, total };
 }
-function currentInvoice(){ return state.invoices.find(i=>i.id===currentId) || null; }
+function currentInvoice(){
+  if(draftInvoice && draftInvoice.id===currentId) return draftInvoice;
+  return state.invoices.find(i=>i.id===currentId) || null;
+}
+function isSavedInvoice(id){ return state.invoices.some(i=>i.id===id); }
 function upsertClientFromInvoice(inv){
   const name = inv.clientName.trim();
   if(!name) return;
@@ -490,17 +496,9 @@ function showView(name){
   if(name==="settings") renderSettings();
   if(name==="editor") requestAnimationFrame(fitPaper);
 }
-function isBlankInvoice(inv){
-  return inv && !inv.clientName.trim() && inv.items.every(it=>!it.desc.trim());
-}
 document.querySelectorAll("[data-nav]").forEach(b=>b.addEventListener("click",()=>{
   const nav = b.dataset.nav;
-  if(nav==="editor"){
-    // pakai ulang draft kosong yang sedang/terakhir diedit agar tidak menumpuk
-    let inv = currentInvoice();
-    if(!inv || !isBlankInvoice(inv)) inv = newInvoice();
-    openInvoice(inv);
-  }
+  if(nav==="editor") startNewInvoice();
   showView(nav);
 }));
 /* ========== DAFTAR INVOICE ========== */
@@ -541,7 +539,7 @@ document.querySelector("#invoice-table tbody").addEventListener("click", e=>{
   const inv = state.invoices.find(i=>i.id===btn.dataset.id);
   if(!inv) return;
   if(btn.dataset.act==="edit"){ openInvoice(inv); showView("editor"); }
-  if(btn.dataset.act==="dup"){ duplicateInvoice(inv); openInvoice(currentInvoice()); showView("editor"); }
+  if(btn.dataset.act==="dup"){ openDraft(duplicateInvoice(inv)); showView("editor"); }
   if(btn.dataset.act==="del"){
     if(confirm(`Hapus invoice ${inv.number}? Tindakan ini tidak bisa dibatalkan.`)){
       state.invoices = state.invoices.filter(i=>i.id!==inv.id);
@@ -557,25 +555,32 @@ $("list-filters").addEventListener("click", e=>{
   renderList();
 });
 $("list-search").addEventListener("input", e=>{ listSearch=e.target.value; renderList(); });
-$("btn-new-invoice").addEventListener("click", ()=>{ openInvoice(newInvoice()); showView("editor"); });
+$("btn-new-invoice").addEventListener("click", ()=>{ startNewInvoice(); showView("editor"); });
 
 function duplicateInvoice(inv){
   const copy = JSON.parse(JSON.stringify(inv));
   copy.id = uid(); copy.number = suggestNumber(); copy.status = "draft";
   copy.createdAt = new Date().toISOString();
   copy.items.forEach(it=>it.id=uid());
-  state.invoices.push(copy);
-  currentId = copy.id;
-  commitCounter(copy); save();
+  return copy;
 }
 
 /* ========== EDITOR ========== */
-function openInvoice(inv){
-  if(!state.invoices.find(i=>i.id===inv.id)) state.invoices.push(inv);
+function openDraft(inv){
+  // tampilkan di editor tanpa menambahkannya ke daftar invoice
+  draftInvoice = inv;
   currentId = inv.id;
   renderEditor();
   renderPaper();
-  save();
+}
+function startNewInvoice(){
+  openDraft(newInvoice());
+}
+function openInvoice(inv){
+  draftInvoice = null;
+  currentId = inv.id;
+  renderEditor();
+  renderPaper();
 }
 function renderEditor(){
   const inv = currentInvoice(); if(!inv) return;
@@ -637,10 +642,20 @@ function renderClientDatalist(){
   $("client-list").innerHTML = state.clients.map(c=>`<option value="${esc(c.name)}">`).join("");
 }
 function persistCurrent(){
-  const inv = currentInvoice(); if(!inv) return;
+  const inv = currentInvoice();
+  if(!inv || !isSavedInvoice(inv.id)) return;
   commitCounter(inv);
   upsertClientFromInvoice(inv);
   save();
+}
+function saveCurrentInvoice(){
+  const inv = currentInvoice(); if(!inv) return false;
+  if(!isSavedInvoice(inv.id)) state.invoices.push(inv);
+  draftInvoice = null;
+  commitCounter(inv);
+  upsertClientFromInvoice(inv);
+  save();
+  return true;
 }
 
 /* --- Event form editor --- */
@@ -826,19 +841,24 @@ $("btn-enlarge").addEventListener("click", ()=>{
   fitPaper();
 });
 
-/* --- Toolbar editor: duplikat, hapus, unduh PDF, selesai --- */
+/* --- Toolbar editor: duplikat, hapus, unduh PDF, simpan --- */
 $("btn-duplicate").addEventListener("click", ()=>{
   const inv = currentInvoice(); if(!inv) return;
-  duplicateInvoice(inv); renderEditor(); renderPaper();
+  openDraft(duplicateInvoice(inv));
 });
 $("btn-delete-inv").addEventListener("click", ()=>{
   const inv = currentInvoice(); if(!inv) return;
+  if(!isSavedInvoice(inv.id)){
+    draftInvoice = null; currentId = null; showView("list"); return;
+  }
   if(confirm(`Hapus invoice ${inv.number}? Tindakan ini tidak bisa dibatalkan.`)){
     state.invoices = state.invoices.filter(i=>i.id!==inv.id);
     currentId = null; save(); showView("list");
   }
 });
-$("btn-back-list").addEventListener("click", ()=>{ persistCurrent(); showView("list"); });
+$("btn-back-list").addEventListener("click", ()=>{
+  if(saveCurrentInvoice()) showView("list");
+});
 
 /* --- Tab mobile form/pratinjau --- */
 $("tab-form").addEventListener("click", ()=>{
@@ -1204,7 +1224,9 @@ $("btn-pdf").addEventListener("click",()=>{ downloadPdf().catch(e=>alert("Gagal 
 /*@@PDF5@@*/
 renderList();
 renderClientDatalist();
-window.addEventListener("beforeunload", persistCurrent);
+window.addEventListener("beforeunload", ()=>{
+  if(currentInvoice() && isSavedInvoice(currentId)) persistCurrent();
+});
 </script>
 </script>
 </div>
